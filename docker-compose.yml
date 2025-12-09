@@ -1,16 +1,37 @@
-
 services:
   db:
     image: postgres:15
+    container_name: bookreview_db
     environment:
       POSTGRES_USER: user1
       POSTGRES_PASSWORD: password1
       POSTGRES_DB: resilience_db
     ports:
-    - "54325:5432"
+      - "54325:5432"
     volumes:
-    - pgdata:/var/lib/postgresql/data1
-
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user1 -d resilience_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  
+  backend:
+    build: .
+    container_name: bookreview_backend
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy  # Wait for db to be healthy
+    environment:
+      - DATABASE_URL=postgresql://user1:password1@db:5432/resilience_db
+    volumes:
+      - ./:/app
+    command: >
+      sh -c "sleep 5 && uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
+    # Add this restart policy
+    restart: on-failure:5
 
 volumes:
-  pgdata:
+  postgres_data:

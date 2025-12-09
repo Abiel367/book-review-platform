@@ -4,6 +4,8 @@ from sqlmodel import Session, select
 from contextlib import asynccontextmanager
 from typing import List, Optional
 from datetime import datetime
+import time  
+from sqlalchemy.exc import OperationalError  
 
 from models import (
     User, Review, UserRegister, UserLogin, ReviewCreate, 
@@ -19,9 +21,24 @@ import sqlmodel
 # Create tables
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    sqlmodel.SQLModel.metadata.create_all(engine)
+    # Wait for database to be ready
+    max_retries = 10
+    retry_delay = 2
     
-    # Create default admin 
+    for attempt in range(max_retries):
+        try:
+            sqlmodel.SQLModel.metadata.create_all(engine)
+            print("✅ Database connected successfully!")
+            break
+        except OperationalError:
+            if attempt < max_retries - 1:
+                print(f"⚠️ Database not ready, retrying in {retry_delay}s... (Attempt {attempt + 1}/{max_retries})")
+                time.sleep(retry_delay)
+            else:
+                print("❌ Failed to connect to database after maximum retries")
+                raise
+    
+    # Create default admin if not exists
     with Session(engine) as session:
         admin = session.exec(
             select(User).where(User.full_name == "Abiel Robinson")
@@ -34,9 +51,9 @@ async def lifespan(app: FastAPI):
             )
             session.add(admin)
             session.commit()
+            print("✅ Default admin user created")
     
     yield
-
 app = FastAPI(
     title="Book Review Platform",
     description="API for book review platform with PIN-based authentication",
